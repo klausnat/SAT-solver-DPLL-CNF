@@ -1,5 +1,7 @@
 Require Import Cpdt.CpdtTactics.
 Require Import Classical_Prop.
+Require Import List.
+
 (*
 Implement the DPLL satisfibility decision procedure for boolean formulas in conjunc-
 tive normal form, with a dependent type that guarantees its correctness. An example
@@ -52,11 +54,41 @@ Inductive formulaTrue : tvals -> formula -> Prop :=
 | TNotVar : forall tv var, tv var = false -> formulaTrue tv (Not var)
 | TConj : forall f1 f2 tv, formulaTrue tv f1 -> formulaTrue tv f2 -> formulaTrue tv (Conj f1 f2). 
 
-Theorem sameMap : forall x x0 f, formulaTrue x0 f ->
-                                 forall vr, x vr = x0 vr ->
-                                            formulaTrue x f.
-  Admitted. 
+(* Группа функций для извлечения списка переменных из двух формул НИЖЕ *)
+Fixpoint vars_in_formula f : list var :=
+  match f with
+  | Var v => v :: nil
+  | Not v => v :: nil
+  | Conj f1 f2 => (vars_in_formula f1) ++ (vars_in_formula f2)
+  end.
 
+Definition eq_nat_dec (n m : var) : {n = m} + {n <> m}.
+decide equality.
+Defined.                          
+  
+
+Definition In_lst (x : var) (ls : list var) : {In x ls} + {~(In x ls)}.
+  induction ls.
+  - crush.
+  - inversion IHls.
+    left. crush.
+    destruct (eq_nat_dec x a).
+    + left. crush.
+    + right. crush. 
+Defined.       
+
+Fixpoint unite_lists ls1 ls2 : list var :=
+  match ls1 with
+    | nil => ls2
+    | x :: xs => match (In_lst x ls2) with 
+                 | left _ => unite_lists xs ls2
+                 | right _ => x :: unite_lists xs ls2
+                 end
+    end.
+
+Definition vars_in_two_formulas f1 f2 : list var :=
+  unite_lists (vars_in_formula f1) (vars_in_formula f2).
+(* Группа функций для извлечения списка переменных из двух формул ВЫШЕ *)
 
 Definition checkFormula : forall f : formula,
     {truth : tvals | formulaTrue truth f } + {forall truth, ~(formulaTrue truth f) }.
@@ -76,16 +108,21 @@ Definition checkFormula : forall f : formula,
     assert (( v !-> false ; _ !-> true ) v = false).
     { induction v. crush. crush. }
     apply H.
-  - crush.
+  - crush. 
     + destruct a.
       destruct a0.
-      constructor. econstructor. constructor.
+      constructor. econstructor. constructor. apply f. 
+      assert (G : exists x1, exists vr, x1 vr = x0 vr /\ x1 vr = x vr).
+      { eexists. eexists. destruct f1. destruct f2. crush. vr
+      
+
+      constructor.
       apply f.
       assert (H : (forall vr, x vr = x0 vr) \/ ~(forall vr, x vr = x0 vr)). apply classic.
       destruct H.
       * eapply sameMap. apply f0. apply H.
-      * crush. exfalso. apply H. intros. induction vr. 
-      
+      * crush. exfalso. apply H. 
+
       
       
     + apply inright. intros. inversion H. apply b with truth. apply H4.
@@ -100,20 +137,3 @@ Eval simpl in checkFormula (Var 6).
 Eval simpl in checkFormula (Not 6).
 
 (* delete abowe *)
-
-
-
-
-
-  
-  refine (fix F (f : formula) : {truth : tvals | formulaTrue truth f } + {forall truth, ~(formulaTrue truth f) } :=
-            match f return {truth : tvals | formulaTrue truth f } + {forall truth, ~(formulaTrue truth f) } with
-            | Var x => left (exist ( x !-> true ; _ !-> false ), formulaTrue ( x !-> true ; _ !-> false ) (Var x)) 
-            end); crush.
-Defined.
-
-
-    
-
-
-  
