@@ -1,3 +1,4 @@
+Set Implicit Arguments.
 Require Import Cpdt.CpdtTactics.
 Require Import Classical_Prop.
 Require Import List.
@@ -77,6 +78,7 @@ Definition In_lst (x : var) (ls : list var) : {In x ls} + {~(In x ls)}.
     + right. crush. 
 Defined.       
 
+(* list of vars from two lists. no duplicates *)
 Fixpoint unite_lists ls1 ls2 : list var :=
   match ls1 with
     | nil => ls2
@@ -86,14 +88,47 @@ Fixpoint unite_lists ls1 ls2 : list var :=
                  end
     end.
 
+(* only elements, which present in both lists, common elements *)
+Fixpoint only_commons ls1 ls2 : list var :=
+    match ls1 with
+    | nil => nil
+    | x :: xs => match ls2 with 
+                 | nil => nil
+                 | _ => match (In_lst x ls2) with
+                        | left _ => x :: only_commons xs ls2
+                        | right _ => only_commons xs ls2
+                        end                          
+                 end
+    end.
+
 Definition vars_in_two_formulas f1 f2 : list var :=
   unite_lists (vars_in_formula f1) (vars_in_formula f2).
+
+
+(* only vars which present in both formulas. Vars that can contradict *)
+Definition common_vars_for_two_formulas f1 f2 : list var :=
+  only_commons (vars_in_formula f1) (vars_in_formula f2).
+
+Inductive maybe (A : Set) (P : A -> Prop) : Set :=
+| Unknown : maybe P
+| Found : forall x : A, P x -> maybe P.
+
+Definition combined_map :
+  forall (f1 f2 : formula) (m1 m2 : tvals) (pf1 : formulaTrue m1 f1) (pf2 : formulaTrue m2 f2),
+    {comb : tvals | formulaTrue comb f1 /\ formulaTrue comb f2} +
+    {forall comb, ~(formulaTrue comb f1 /\ formulaTrue comb f2)}. 
+    refine (fix F (f1 f2 : formula) (m1 m2 : tvals) (pf1 : formulaTrue m1 f1) (pf2 : formulaTrue m2 f2) :
+         {comb : tvals | formulaTrue comb f1 /\ formulaTrue comb f2} +
+         {forall comb, ~(formulaTrue comb f1 /\ formulaTrue comb f2)} :=
+
+           ) 
+    
 (* Группа функций для извлечения списка переменных из двух формул ВЫШЕ *)
 
 Definition checkFormula : forall f : formula,
     {truth : tvals | formulaTrue truth f } + {forall truth, ~(formulaTrue truth f) }.
   Hint Constructors formulaTrue.
-(* delete below *)
+
   intros.
   induction f.
   - constructor.
@@ -111,29 +146,37 @@ Definition checkFormula : forall f : formula,
   - crush. 
     + destruct a.
       destruct a0.
-      constructor. econstructor. constructor. apply f. 
-      assert (G : exists x1, exists vr, x1 vr = x0 vr /\ x1 vr = x vr).
-      { eexists. eexists. destruct f1. destruct f2. crush. vr
-      
-
-      constructor.
-      apply f.
-      assert (H : (forall vr, x vr = x0 vr) \/ ~(forall vr, x vr = x0 vr)). apply classic.
-      destruct H.
-      * eapply sameMap. apply f0. apply H.
-      * crush. exfalso. apply H. 
-
-      
-      
+      destruct (combined_map f f0) as [ L i | R j ].
+      * left. destruct L. exists x1. constructor. crush. crush.
+      * right. crush. apply R with truth. crush. inversion H; crush. inversion H; crush. 
     + apply inright. intros. inversion H. apply b with truth. apply H4.
     + apply inright. intros. inversion H. apply b with truth. apply H3.
     + apply inright. intros. inversion H. apply b in H3. inversion H3. 
-      
+Defined.       
 
-
-(* Defined. *)
 
 Eval simpl in checkFormula (Var 6).
 Eval simpl in checkFormula (Not 6).
+Eval simpl in checkFormula (Conj (Var 6) (Not 6)).
 
-(* delete abowe *)
+
+(* когда пыталась доказать третий случай, однажды понуждалась в этой теореме *)
+Theorem sameMap : forall x x0 f, formulaTrue x0 f ->
+                                 forall vr, x vr = x0 vr ->
+                                            formulaTrue x f.
+  Admitted. 
+
+(* можно сделать работу с сумбул more convenient - не использовано пока *)
+Notation "’Yes’" := (left ).
+Notation "’No’" := (right ).
+Notation "’Reduce’ x" := (if x then Yes else No) (at level 50).
+
+
+
+  
+  refine (fix F (f : formula) : {truth : tvals | formulaTrue truth f } + {forall truth, ~(formulaTrue truth f) } :=
+            match f return {truth : tvals | formulaTrue truth f } + {forall truth, ~(formulaTrue truth f) } with
+            | Var x => left (exist ( x !-> true ; _ !-> false ), formulaTrue ( x !-> true ; _ !-> false ) (Var x)) 
+            end); crush.
+Defined.
+
