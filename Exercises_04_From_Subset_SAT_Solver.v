@@ -109,19 +109,42 @@ Definition vars_in_two_formulas f1 f2 : list var :=
 Definition common_vars_for_two_formulas f1 f2 : list var :=
   only_commons (vars_in_formula f1) (vars_in_formula f2).
 
-Inductive maybe (A : Set) (P : A -> Prop) : Set :=
-| Unknown : maybe P
-| Found : forall x : A, P x -> maybe P.
+Lemma vars_in_formula_not_nil : forall f, vars_in_formula f = nil -> False.
+  intros. induction f; crush. Search (_ ++ _) nil.
+  (* app_eq_nil: forall [A : Type] (l l' : list A), l ++ l' = nil -> l = nil /\ l' = nil *)
+  apply app_eq_nil in H. crush.
+  Qed. 
+
+Lemma unite_nil : forall ls1 ls2, unite_lists ls1 ls2 = nil -> ls1 = nil /\ ls2 = nil.
+  intros. induction ls1. crush.
+  simpl in H. crush.
+  destruct (In_lst a ls2). crush. crush.
+  destruct (In_lst a ls2). crush. crush.
+Qed.   
+
+Lemma vars_in_two_formulas_not_nil : forall f1 f2, vars_in_two_formulas f1 f2 = nil -> False.
+  intros. unfold vars_in_two_formulas in H.
+  apply unite_nil in H. crush. apply vars_in_formula_not_nil in H0.
+  crush.
+Qed. 
+  
+Theorem notExists : forall f1 f2, vars_in_two_formulas f1 f2 = nil -> forall comb, ~(formulaTrue comb f1 /\ formulaTrue comb f2).
+  intros. apply vars_in_two_formulas_not_nil in H. crush.
+Qed.   
 
 Definition combined_map :
   forall (f1 f2 : formula) (m1 m2 : tvals) (pf1 : formulaTrue m1 f1) (pf2 : formulaTrue m2 f2),
     {comb : tvals | formulaTrue comb f1 /\ formulaTrue comb f2} +
-    {forall comb, ~(formulaTrue comb f1 /\ formulaTrue comb f2)}. 
+    {forall comb, ~(formulaTrue comb f1 /\ formulaTrue comb f2)}.
+  Print sumbool. 
     refine (fix F (f1 f2 : formula) (m1 m2 : tvals) (pf1 : formulaTrue m1 f1) (pf2 : formulaTrue m2 f2) :
          {comb : tvals | formulaTrue comb f1 /\ formulaTrue comb f2} +
          {forall comb, ~(formulaTrue comb f1 /\ formulaTrue comb f2)} :=
-
-           ) 
+              match vars_in_two_formulas f1 f2 as res with 
+              | nil => inright (notExists res)
+              | (x :: xs) => _ (* if contradictions on precise meanings right if no contrad-s *)
+              end
+           ); crush.  
     
 (* Группа функций для извлечения списка переменных из двух формул ВЫШЕ *)
 
@@ -179,4 +202,5 @@ Notation "’Reduce’ x" := (if x then Yes else No) (at level 50).
             | Var x => left (exist ( x !-> true ; _ !-> false ), formulaTrue ( x !-> true ; _ !-> false ) (Var x)) 
             end); crush.
 Defined.
+
 
