@@ -37,4 +37,36 @@ Inductive formulaTrue : tvals -> formula -> Prop :=
                            formulaTrue tv (Lit (Disj l1 l2))
 | TConj : forall f1 f2 tv, formulaTrue tv f1 -> formulaTrue tv f2 -> formulaTrue tv (Conj f1 f2). 
 
-Definition backtracking : forall f : formula, {truth : tvals | formulaTrue truth f } + {forall truth, ~ formulaTrue truth f }.
+Inductive maybe (A : Set) (P : A -> Prop) : Set :=
+| Unknown : maybe P
+| Found : forall x : A, P x -> maybe P.
+
+(* we can define some new notations for convenient usage of type maybe. *)
+Notation "{{ x | P }}" := (maybe (fun x => P)).
+Notation "??" := (Unknown _ ).
+Notation "[| x |]" := (Found _ x _).
+
+Fixpoint backtracking : forall (f : formula) (map : tvals) : {{map | formulaTrue map f}} :=
+            match f with
+            | Lit l => match l with
+                       | Var v => if map v then [| map |] else ??
+                       | Not v => if map v then ?? else [| map |]
+                       | Disj l1 l2 => 
+                       end                  
+            | Conj f1 f2 => _                      
+                                 
+
+Definition checkFormula : forall f : formula, {truth : tvals | formulaTrue truth f } + {forall truth, ~ formulaTrue truth f }.
+  Hint Constructors formulaTrue.
+  refine (fix F (f : formula) : {truth : tvals | formulaTrue truth f } + {forall truth, ~(formulaTrue truth f) } :=
+            match f return {truth : tvals | formulaTrue truth f } + {forall truth, ~ formulaTrue truth f } with
+            | Lit l => match l with
+                       | Var v => _
+                       | Not v => _
+                       | Disj l1 l2 => _
+                       end                  
+            | Conj f1 f2 => _
+            end). crush.
+
+Defined.   
+
