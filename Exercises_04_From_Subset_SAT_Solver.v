@@ -2,6 +2,7 @@ Set Implicit Arguments.
 Require Import Cpdt.CpdtTactics.
 Require Import Classical_Prop.
 Require Import List.
+Require Import Bool.Bool.
 
 Definition var := nat % type. 
 Definition total_map (A : Type) := var -> A.
@@ -37,6 +38,8 @@ Inductive formulaTrue : tvals -> formula -> Prop :=
                            formulaTrue tv (Lit (Disj l1 l2))
 | TConj : forall f1 f2 tv, formulaTrue tv f1 -> formulaTrue tv f2 -> formulaTrue tv (Conj f1 f2). 
 
+Eval simpl in formulaTrue (fun _ => false) (Lit (Var 1)).
+
 Inductive maybe (A : Set) (P : A -> Prop) : Set :=
 | Unknown : maybe P
 | Found : forall x : A, P x -> maybe P.
@@ -45,11 +48,6 @@ Inductive maybe (A : Set) (P : A -> Prop) : Set :=
 Notation "{{ x | P }}" := (maybe (fun x => P)).
 Notation "??" := (Unknown _ ).
 Notation "[| x |]" := (Found _ x _).
-
-Search In.
-
-(* map - текущая карта. изменяемая. 
-ls - список переменных, которые нельзя менять. *)
 
 Fixpoint vars_in_liter l : list var :=
   match l with
@@ -97,7 +95,7 @@ fix map (l : list A) : list B := match l with
                                  end
      : forall A B : Type, (A -> B) -> list A -> list B
 *)
-(* DO NOT WORKS CORRECTLY. TO BE FINISHED *)
+(* DO NOT WORKS CORRECTLY. TO BE FINISHED, not all possible maps included *)
 Fixpoint all_maps (l : list var) : list tvals :=
   match l with
   | nil => (fun _ => false) :: nil
@@ -128,40 +126,27 @@ map :: forall A B : Type, (A -> B) -> list A -> list B
 
 *)
 
+Search eq.
 
-Definition backtracking : forall (f : formula) (map : tvals), {{m1 | formulaTrue m1 f}}.
-         match f with
-         | Lit l => match l with
-                    | Var v => if map v then [| map |] else ??
-                    | Not v => if map v then ?? else [| map |]
-                    | Disj l1 l2 => match backtracking (Lit l1) map with
-                                    | Found _ map _ => [| map |]
-                                    | Unknown _ => match backtracking (Lit t2) map with
-                                                   | Found _ map _ => [| map |]
-                                                   | Unknown _ => ??
-                                                   end
-                                    end                 
-                    end                  
-         | Conj f1 f2 => match backtracking f1 map with
-                         | Found _ map _ => match backtracking f2 map with
-                                            | Found _ map _ => [| map |]
-                                            | Unknown _ => ??
-                                            end                 
-                         | Unknown _ => ??
-                         end
-         end.                   
-                                 
+  
+Definition checkOneMap (f : formula) (map : tvals) : {formulaTrue map f} + {~formulaTrue map f}.
+  Hint Constructors formulaTrue.
+  induction f.
+  - induction l.
+    + destruct (map v) as [H | H'] eqn:G; crush. right. intros. inversion H. crush. 
+    + destruct (map v) as [H | H'] eqn:G; crush. right. intros. inversion H. crush.
+    + inversion IHl1; inversion IHl2; crush. right. intros. inversion H1. crush. 
+  - inversion IHf1; inversion IHf2; crush. right. intros. inversion H1. crush.
+    right. intros. inversion H1; crush. right. intros. inversion H1; crush.
+Defined. 
+
+Theorem no_Vars_in_formula : forall f, all_maps (remove_dups (vars_in_formula_dupl f)) = nil -> (forall truth, ~(formulaTrue truth f)). Admitted. (* if no variables in formula,  *)
 
 Definition checkFormula : forall f : formula, {truth : tvals | formulaTrue truth f } + {forall truth, ~ formulaTrue truth f }.
   Hint Constructors formulaTrue.
-  refine (fix F (f : formula) : {truth : tvals | formulaTrue truth f } + {forall truth, ~(formulaTrue truth f) } :=
-            match f return {truth : tvals | formulaTrue truth f } + {forall truth, ~ formulaTrue truth f } with
-            | Lit l => match l with
-                       | Var v => _
-                       | Not v => _
-                       | Disj l1 l2 => _
-                       end                  
-            | Conj f1 f2 => _
-            end). crush.
-
-Defined.   
+  intros. 
+  induction (all_maps (remove_dups (vars_in_formula_dupl f))) eqn:E.
+  - right. apply no_Vars_in_formula. assumption. 
+  - destruct (checkOneMap f a) as [H | H'] eqn:G.
+    + left. exists a. assumption.
+    + apply IHl.
