@@ -124,9 +124,34 @@ create all possible combinations of maps
 
 map :: forall A B : Type, (A -> B) -> list A -> list B
 
-*)
+Definition tvals := total_map bool.
 
-Search eq.
+Inductive literal : Set :=
+| Var : var -> literal
+| Not : var -> literal                 
+| Disj : literal -> literal -> literal.
+
+Inductive formula : Set :=
+| Lit : literal -> formula
+| Conj : formula -> formula -> formula.    
+
+Inductive formulaTrue : tvals -> formula -> Prop :=
+| TVar : forall tv var, tv var = true -> formulaTrue tv (Lit (Var var))
+| TNot : forall tv var, tv var = false -> formulaTrue tv (Lit (Not var))
+| TDisj : forall l1 l2 tv, formulaTrue tv (Lit l1) \/ formulaTrue tv (Lit l2) ->
+                           formulaTrue tv (Lit (Disj l1 l2))
+| TConj : forall f1 f2 tv, formulaTrue tv f1 -> formulaTrue tv f2 -> formulaTrue tv (Conj f1 f2). 
+ *)
+
+Inductive formula_List_Vars : list var -> formula -> Prop :=
+| FLVar : forall var, formula_List_Vars (var :: nil) (Lit (Var var))
+| FLNot : forall var, formula_List_Vars (var :: nil) (Lit (Not var))
+| FLDisj : forall liter1 liter2 ls1 ls2, formula_List_Vars ls1 (Lit liter1) ->
+                                         formula_List_Vars ls2 (Lit liter2) ->
+                                         formula_List_Vars (ls1 ++ ls2) (Lit (Disj liter1 liter2))
+| FLConj : forall f1 f2 ls1 ls2, formula_List_Vars ls1 f1 ->
+                                 formula_List_Vars ls2 f2 ->
+                                 formula_List_Vars (ls1 ++ ls2) (Conj f1 f2).
 
   
 Definition checkOneMap (f : formula) (map : tvals) : {formulaTrue map f} + {~formulaTrue map f}.
@@ -138,15 +163,34 @@ Definition checkOneMap (f : formula) (map : tvals) : {formulaTrue map f} + {~for
     + inversion IHl1; inversion IHl2; crush. right. intros. inversion H1. crush. 
   - inversion IHf1; inversion IHf2; crush. right. intros. inversion H1. crush.
     right. intros. inversion H1; crush. right. intros. inversion H1; crush.
-Defined. 
+Defined.
+Print option. 
 
-Theorem no_Vars_in_formula : forall f, all_maps (remove_dups (vars_in_formula_dupl f)) = nil -> (forall truth, ~(formulaTrue truth f)). Admitted. (* if no variables in formula,  *)
+Definition checkAllMaps (f : formula) (maps : list tvals) : option {map : tvals | formulaTrue map f}.
+ induction maps eqn:E. Admitted. 
+  
+  
 
-Definition checkFormula : forall f : formula, {truth : tvals | formulaTrue truth f } + {forall truth, ~ formulaTrue truth f }.
-  Hint Constructors formulaTrue.
-  intros. 
-  induction (all_maps (remove_dups (vars_in_formula_dupl f))) eqn:E.
-  - right. apply no_Vars_in_formula. assumption. 
-  - destruct (checkOneMap f a) as [H | H'] eqn:G.
-    + left. exists a. assumption.
-    + apply IHl.
+
+(* if no variables in formula,  *)
+Theorem no_Vars_in_formula : forall f, all_maps (remove_dups (vars_in_formula_dupl f)) = nil -> (forall truth, ~(formulaTrue truth f)).
+  intros. Admitted.
+Print Exists. 
+
+(* Exists: forall [A : Type], (A -> Prop) -> list A -> Prop *)
+
+Definition checkFormula : forall f : formula, {truth : tvals | formulaTrue truth f } + {forall truth, ~ formulaTrue truth f }. 
+  refine (fix F (f : formula) : {truth : tvals | formulaTrue truth f } + {forall truth, ~(formulaTrue truth f) } :=
+            match (all_maps (remove_dups (vars_in_formula_dupl f))) return {truth : tvals | formulaTrue truth f } + {forall truth, ~ formulaTrue truth f } with
+            | nil => inright _
+            | map :: maps => match checkOneMap f map with
+                             | left pf => inleft _
+                             | right pf => match checkAllMaps f maps with
+                                           | None => inright _
+                                           | Some mp => inleft mp
+                                           end
+                             end                
+            end).
+  - admit.                      (* список мапов нил. значит нет подходящей мапы, дошли до конца *)
+  - exists map. auto.           
+  - admit.                       (* checkAllMaps должна возвращать доказательство того, что мап не существует, все перебрали *)
