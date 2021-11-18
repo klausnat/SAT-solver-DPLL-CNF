@@ -1,4 +1,5 @@
 Set Implicit Arguments.
+Set Asymmetric Patterns.
 Require Import Cpdt.CpdtTactics.
 Require Import Classical_Prop.
 Require Import List.
@@ -62,6 +63,12 @@ Notation "{{ x | P }}" := (maybe (fun x => P)).
 Notation "??" := (Unknown _ ).
 Notation "[| x |]" := (Found _ x _).
 
+Notation "x <- e1 ; e2" := (match e1 with
+                             | Unknown => ??
+                             | Found x _ => e2
+                           end)
+(right associativity, at level 60).
+
 Fixpoint vars_in_liter l : list var :=
   match l with
   | Var v => v :: nil
@@ -98,7 +105,7 @@ Fixpoint remove_dups ls : list var :=
                  end
   end.            
 
-(* СОЗДАЕМ ВСЕВОЗМОЖНЫЕ МАПЫ ДЛЯ ЭТОЙ ФОРМУЛЫ 
+(* СОЗДАЕМ ВСЕВОЗМОЖНЫЕ МАПЫ ДЛЯ ЭТОЙ ФОРМУЛЫ, думаю, это неправильный подход, попробую создать мапу из зависимых индуктивных типов. 
 при вызове первым списком всевозможных мапов передавать ((всем присвоить false) :: nil), то есть всем варам в списке присвоили - false, эту мапу будем размножать до состояния "все возможные" 
 ПЛАН:
 - взяли переменную из списка и cur_maps. 
@@ -129,7 +136,8 @@ Eval simpl in CreateAllFalsesMap (1 :: 2 :: 3 :: nil) empty.
 
 Eval simpl in makeAllMaps (1 :: 2 :: 3 :: nil) ( (CreateAllFalsesMap (1 :: 2 :: 3 :: nil) empty) :: nil).
 
-Inductive formula_List_Vars : list var -> formula -> Prop := (* with duplicates, I probably don't need this Prop *)
+(* что список принадлежит формуле (это ее контекст) with duplicates, I probably don't need this Prop *)
+Inductive formula_List_Vars : list var -> formula -> Prop := 
 | FVars_Var : forall var, formula_List_Vars (var :: nil) (Lit (Var var))
 | FVars_Not : forall var, formula_List_Vars (var :: nil) (Lit (Not var))
 | FVars_Disj : forall liter1 liter2 ls1 ls2, formula_List_Vars ls1 (Lit liter1) ->
@@ -139,72 +147,96 @@ Inductive formula_List_Vars : list var -> formula -> Prop := (* with duplicates,
                                  formula_List_Vars ls2 f2 ->
                                  formula_List_Vars (ls1 ++ ls2) (Conj f1 f2).
 
-Inductive formula_List_Maps : list maps -> formula -> Prop :=
-| FMaps_Var : formula_List_Maps () (Lit (Var var))
-| FMaps_Not
-| FMaps_Disj
-| FMaps_Conj    
+(* что мапа принадлежит формуле, может формула и не true на этой мапе. НАДО? *)
+Inductive formula_map : tvals -> formula -> Prop :=
+| FM_Var_True : forall map var, map var = Some true -> formula_map map (Lit (Var var))
+| FM_Var_False : forall map var, map var = Some false -> formula_map map (Lit (Var var))
+| FM_Not_True : forall map var, map var = Some true -> formula_map map (Lit (Not var))
+| FM_Not_False : forall map var, map var = Some false -> formula_map map (Lit (Not var))
+| FM_Disj : forall lit1 lit2 map, formula_map map (Lit lit1) ->
+                                  formula_map map (Lit lit2) ->
+                                  formula_map map (Lit (Disj lit1 lit2)) 
+| FM_Conj : forall f1 f2 map, formula_map map f1 ->
+                              formula_map map f2 ->
+                              formula_map map (Conj f1 f2).
+
+(* какрта связана со списком переменных *)
+Definition map_and_vars (ls : list tvals) (map : tvals) :=
+  forall var res, map var = Some res /\ In map ls.
+
+(* представитель этого типа является доказательством того, что в списке мапов перечислены все мапы формулы *)
+(*
+Inductive formula_allMaps : list tvals -> formula -> Prop :=
+| LstMpsVar : forall ls var m1 m2 ls,
+                     In_ls m1 ls = left (In m1 ls) /\ FM_Var_True m1 (Lit (Var var)) ->
+                     In_ls m2 ls = left (In m2 ls) /\ FM_Var_False m2 (Lit (Var var)) ->
+                     formula_allMaps ls (Lit (Var var)). *) 
 
 Definition checkOneMap (f : formula) (map : tvals) : {formulaTrue map f} + {~formulaTrue map f}.
   Hint Constructors formulaTrue.
   induction f.
   - induction l.
-    + destruct (map v) as [H | H'] eqn:G; crush. right. intros. inversion H. crush. 
-    + destruct (map v) as [H | H'] eqn:G; crush. right. intros. inversion H. crush.
-    + inversion IHl1; inversion IHl2; crush. right. intros. inversion H1. crush. 
-  - inversion IHf1; inversion IHf2; crush. right. intros. inversion H1. crush.
-    right. intros. inversion H1; crush. right. intros. inversion H1; crush.
-Defined.
+    + destruct (map v) eqn:G. destruct b eqn:E. left. constructor. auto. right.
+      unfold not. intros. inversion H. crush. right. unfold not. intros. inversion H. crush.
+    + destruct (map v) eqn:G. (destruct b); crush. right; crush. inversion H. crush.
+      right. unfold not. intros. inversion H. crush.
+    + inversion IHl1; inversion IHl2; crush. right. intros. inversion H1; crush.
+  - inversion IHf1; inversion IHf2; crush. right. intros. inversion H1; crush.
+    right. intros. inversion H1; crush. right. intros. inversion H1; crush. 
+Defined.     
 
-
-
-Definition checkAllMaps (f : formula) (list_maps : list tvals) formula_List_Vars lvs f -> {truth : tvals | formulaTrue truth f } + {forall truth, ~ formulaTrue truth f }.
-  intros.
-  induction f.
-  - destruct l eqn:G.
-    + left. exists 
-  
-
-
-
+Definition checkAllMaps : forall (f : formula) (ls : list tvals), option (exists map, formulaTrue map f /\ map_and_vars ls map). Admitted. 
 
 (* if no variables in formula,  *)
+(*
 Theorem no_Vars_in_formula : forall f, all_maps (remove_dups (vars_in_formula_dupl f)) = nil -> (forall truth, ~(formulaTrue truth f)).
   intros. Admitted.
 Print Exists. 
-
+*)
 (* Exists: forall [A : Type], (A -> Prop) -> list A -> Prop *)
 
-Definition checkFormula : forall f : formula, {truth : tvals | formulaTrue truth f } + {forall truth, ~ formulaTrue truth f }. 
-  refine (fix F (f : formula) (): {truth : tvals | formulaTrue truth f } + {forall truth, ~(formulaTrue truth f) } :=
-            match (all_maps (remove_dups (vars_in_formula_dupl f))) return {truth : tvals | formulaTrue truth f } + {forall truth, ~ formulaTrue truth f } with
-            | nil => inright _
-            | map :: maps => match checkOneMap f map with
-                             | left pf => inleft _
-                             | right pf => match checkAllMaps f maps with
-                                           | None => inright _
-                                           | Some mp => inleft mp
-                                           end
-                             end                
-            end).
-  - admit.                      (* список мапов нил. значит нет подходящей мапы, дошли до конца *)
-  - exists map. auto.           
-  - admit.           (* checkAllMaps должна возвращать доказательство того, что мап не существует, все перебрали *)
+Definition inclusion {A : Type} (m m' : partial_map A) :=
+  forall x v, m x = Some v -> m' x = Some v.
 
+Print sumor.
+(** %\vspace{-.15in}% [[
+Inductive sumor (A : Type) (B : Prop) : Type :=
+    inleft : A -> A + {B} | inright : B -> A + {B}
+]] *)
 
+Notation "!!" := (inright _ _).
+(** %\def\indash{-}\catcode`-=13\def-{\indash\kern0pt }% *)
+
+Notation "x <-- e1 ; e2" := (match e1 with
+                               | inright _ => !!
+                               | inleft (exist x _) => e2
+                             end)
+(right associativity, at level 60).
+
+(** %\catcode`-=12% *)(* *)
+(** printing * $\times$ *)
+Print checkOneMap.
+(* 
+Inductive formula_map : tvals -> formula -> Prop (все возможные мапы для конкр. формулы)
+                                                   
+Definition checkOneMap (f : formula) (map : tvals) : {formulaTrue map f} + {~formulaTrue map f}.
+*)
+                                              
 Definition checkFormula : forall f : formula, {truth : tvals | formulaTrue truth f } + {forall truth, ~formulaTrue truth f }. 
   refine (fix F (f : formula) : {truth : tvals | formulaTrue truth f } + {forall truth, ~(formulaTrue truth f) } :=
-            match (all_maps (remove_dups (vars_in_formula_dupl f))) return {truth : tvals | formulaTrue truth f } + {forall truth, ~ formulaTrue truth f } with
+            match makeAllMaps (remove_dups (vars_in_formula_dupl f)) ( (CreateAllFalsesMap (remove_dups (vars_in_formula_dupl f)) empty) :: nil)
+            return {truth : tvals | formulaTrue truth f } + {forall truth, ~ formulaTrue truth f } with
             | nil => inright _
             | map :: maps => match checkOneMap f map with
                              | left pf => inleft _
                              | right pf => match checkAllMaps f maps with
-                                           | None => inright _
-                                           | Some mp => inleft mp
-                                           end
+                                           | None => _
+                                           | Some mp => _
+                                           end 
                              end                
             end).
   - admit.                      (* список мапов нил. значит нет подходящей мапы, дошли до конца *)
   - exists map. auto.           
-  - admit.           (* checkAllMaps должна возвращать доказательство того, что мап не существует, все перебрали *)
-  
+  - apply F.
+  - apply F. 
+    (* checkAllMaps должна возвращать доказательство того, что мап не существует, все перебрали *)
