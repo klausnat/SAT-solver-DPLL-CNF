@@ -133,18 +133,19 @@ Inductive formula_List_Vars : list var -> formula -> Prop :=
 | FVars_Not : forall var ls, In var ls -> formula_List_Vars ls (Lit (Not var)).
 
 (* что мапа принадлежит формуле, может формула и не true на этой мапе. НАДО? *)
-Inductive formula_map : tvals -> formula -> Prop :=
+Inductive formula_map : tvals -> formula -> Set :=
 | FM_Var_True : forall map var, map var = Some true -> formula_map map (Lit (Var var))
 | FM_Var_False : forall map var, map var = Some false -> formula_map map (Lit (Var var))
 | FM_Not_True : forall map var, map var = Some true -> formula_map map (Lit (Not var))
 | FM_Not_False : forall map var, map var = Some false -> formula_map map (Lit (Not var)).
 
-Inductive formula_all_maps : list tvals -> formula -> Prop :=
-  | Constr : forall map ls f, In map ls -> formula_map map f -> ls <> nil -> formula_all_maps ls f.
+Inductive formula_all_maps : list tvals -> formula -> Type :=
+| FAM_Var : forall map ls v, In map ls -> formula_map map (Lit (Var v)) -> length ls = 2  -> formula_all_maps ls (Lit (Var v))
+| FAM_Not : forall map ls v, In map ls -> formula_map map (Lit (Not v)) -> length ls = 2  -> formula_all_maps ls (Lit (Not v)).
 
 Theorem all_maps_not_nil : forall f, formula_all_maps nil f -> False.
-  intros. induction f; destruct l; crush. simpl in H. inversion H. inversion H0.
-  inversion H. inversion H0. Qed. 
+  intros. induction f; destruct l; crush. inversion X. crush. inversion X. crush. 
+Qed. 
 
 Definition checkOneMap (f : formula) (map : tvals) : {formulaTrue map f} + {~formulaTrue map f}.
   Hint Constructors formulaTrue.
@@ -156,27 +157,63 @@ Definition checkOneMap (f : formula) (map : tvals) : {formulaTrue map f} + {~for
       right. unfold not. intros. inversion H. crush.
 Defined.       
 
+Definition equal_maps_on_formula (m1 m2 : tvals) : Prop :=
+  forall (v : var) (f : formula) (ls : list var), formula_List_Vars ls f /\ m1 v = m2 v /\ In v ls.
+
+(* теорема в своем док-ве опирается на длину списка всех возможных для формулы мапов *)
+Theorem FAM : forall f t, formula_all_maps (t :: nil) f -> ~ formulaTrue t f -> (forall truth, ~formulaTrue truth f ).
+  intros. unfold not. intros.
+inversion X. crush. crush. Qed. 
+
 Definition checkFormula : forall f : formula, {truth : tvals | formulaTrue truth f } + {forall truth, ~formulaTrue truth f }.
-  intros f. 
+  intros f.
   assert (H : formula_List_Vars (remove_dups (vars_in_formula_dupl f)) f ).
   { induction f. induction l. simpl. constructor. crush. simpl. constructor. crush. }
   assert (G : formula_all_maps (makeAllMaps (remove_dups (vars_in_formula_dupl f)) ( (CreateAllFalsesMap (remove_dups (vars_in_formula_dupl f)) empty) :: nil)) f).
   { induction f.
     - induction l.
-      + simpl in H. simpl. eapply Constr. simpl. crush. constructor.
+      + simpl in H. simpl. eapply FAM_Var. simpl. crush. constructor.
         rewrite update_shadow. rewrite update_eq. reflexivity. crush. 
-      + simpl in H. simpl. eapply Constr. simpl. crush. constructor.
+      + simpl in H. simpl. eapply FAM_Not. simpl. crush. constructor.
         rewrite update_shadow. rewrite update_eq. reflexivity. crush. 
   }
-  generalize dependent f.
-  intros. 
-  destruct (makeAllMaps (remove_dups (vars_in_formula_dupl f))
-                        (CreateAllFalsesMap (remove_dups (vars_in_formula_dupl f)) empty :: nil)) eqn:F.
+  remember (remove_dups (vars_in_formula_dupl f)) as fav.
+  remember (makeAllMaps fav (CreateAllFalsesMap fav empty :: nil)) as fam.
+  clear Heqfav H Heqfam fav.
+    
+  generalize dependent f. generalize dependent fam.
+  refine (fix F fam f pf :  {truth : tvals | formulaTrue truth f} + {forall truth : tvals, ~ formulaTrue truth f} :=
+            match f return  {truth : tvals | formulaTrue truth f} + {forall truth : tvals, ~ formulaTrue truth f}
+            with
+            | Lit (Var v) => match fam as ls with
+                             | nil => _
+                             | x :: xs => _
+                             end               
+            | Lit (Not v) => match fam as ls with
+                             | nil => _
+                             | x :: xs => _
+                             end               
+            end).                 
+      
   apply all_maps_not_nil in G. inversion G.
-  clear F. clear H.
-  destruct (checkOneMap f t) eqn:E.
-  constructor. exists t. apply f0.
-  induction l eqn:H'.
-  right. intros. 
 
-  generalize dependent f. 
+
+  
+
+  - admit.
+  - left. exists x. auto. 
+  - 
+    
+  (* -----------  ПЛАН - не пробовала, не знаю как реализовать детали ----------- 
+0. до запуска рефайна, даем формуле мапу, на которой все переменные false. 
+1. ищем не присвоенные vars в формуле
+2. если найдена - разбиваем формулу на 2 поддерева : 
+         - в первом этой вар присваиваем true, 
+         - во втором - false
+   вызываем рекурсивно на обоих поддеревьях пункт 1.  
+3. если не найдена - проверяем истинна ли формула. 
+
+
+
+
+*)
